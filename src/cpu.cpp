@@ -15,6 +15,7 @@
 #include "cpu.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <vector>
 
 #ifdef _OPENMP
@@ -221,13 +222,35 @@ int get_cpu_count()
 #ifdef __ANDROID__
 static int get_max_freq_khz(int cpuid)
 {
+    // first try, for all possible cpu
     char path[256];
     sprintf(path, "/sys/devices/system/cpu/cpufreq/stats/cpu%d/time_in_state", cpuid);
 
     FILE* fp = fopen(path, "rb");
 
     if (!fp)
-        return -1;
+    {
+        // second try, for online cpu
+        sprintf(path, "/sys/devices/system/cpu/cpu%d/cpufreq/stats/time_in_state", cpuid);
+        fp = fopen(path, "rb");
+
+        if (!fp)
+        {
+            // third try, for online cpu
+            sprintf(path, "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", cpuid);
+            fp = fopen(path, "rb");
+
+            if (!fp)
+                return -1;
+
+            int max_freq_khz = -1;
+            fscanf(fp, "%d", &max_freq_khz);
+
+            fclose(fp);
+
+            return max_freq_khz;
+        }
+    }
 
     int max_freq_khz = 0;
     while (!feof(fp))
@@ -369,10 +392,10 @@ int set_cpu_powersave(int powersave)
         sort_cpuid_by_max_frequency(sorted_cpuids, &little_cluster_offset);
     }
 
-    if (little_cluster_offset == 0)
+    if (little_cluster_offset == 0 && powersave != 0)
     {
+        powersave = 0;
         fprintf(stderr, "SMP cpu powersave not supported\n");
-        return -1;
     }
 
     // prepare affinity cpuid

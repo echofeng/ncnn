@@ -24,15 +24,11 @@ class BinaryOp : public Layer
 public:
     BinaryOp();
 
-#if NCNN_STDIO
-#if NCNN_STRING
-    virtual int load_param(FILE* paramfp);
-#endif // NCNN_STRING
-    virtual int load_param_bin(FILE* paramfp);
-#endif // NCNN_STDIO
-    virtual int load_param(const unsigned char*& mem);
+    virtual int load_param(const ParamDict& pd);
 
     virtual int forward(const std::vector<Mat>& bottom_blobs, std::vector<Mat>& top_blobs) const;
+
+    virtual int forward_inplace(Mat& bottom_top_blob) const;
 
     enum {
         Operation_ADD   = 0,
@@ -47,6 +43,8 @@ public:
 public:
     // param
     int op_type;
+    int with_scalar;
+    float b;
 };
 
 } // namespace ncnn

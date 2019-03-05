@@ -22,7 +22,15 @@ namespace ncnn {
 class Convolution_arm : public Convolution
 {
 public:
+    virtual int load_param(const ParamDict& pd);
+
+    virtual int load_model(const ModelBin& mb);
+
     virtual int forward(const Mat& bottom_blob, Mat& top_blob) const;
+
+public:
+    bool use_winograd3x3;
+    Mat weight_3x3_winograd64_data;
 };
 
 } // namespace ncnn

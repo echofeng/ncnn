@@ -26,38 +26,10 @@ SPP::SPP()
     support_inplace = false;
 }
 
-#if NCNN_STDIO
-#if NCNN_STRING
-int SPP::load_param(FILE* paramfp)
+int SPP::load_param(const ParamDict& pd)
 {
-    int nscan = fscanf(paramfp, "%d %d",
-                       &pooling_type, &pyramid_height);
-    if (nscan != 2)
-    {
-        fprintf(stderr, "SPP load_param failed %d\n", nscan);
-        return -1;
-    }
-
-    return 0;
-}
-#endif // NCNN_STRING
-int SPP::load_param_bin(FILE* paramfp)
-{
-    fread(&pooling_type, sizeof(int), 1, paramfp);
-
-    fread(&pyramid_height, sizeof(int), 1, paramfp);
-
-    return 0;
-}
-#endif // NCNN_STDIO
-
-int SPP::load_param(const unsigned char*& mem)
-{
-    pooling_type = *(int*)(mem);
-    mem += 4;
-
-    pyramid_height = *(int*)(mem);
-    mem += 4;
+    pooling_type = pd.get(0, 0);
+    pyramid_height = pd.get(1, 1);
 
     return 0;
 }
@@ -141,7 +113,7 @@ int SPP::forward(const Mat& bottom_blob, Mat& top_blob) const
                 {
                     for (int j = 0; j < outw; j++)
                     {
-                        const float* sptr = m.data + m.w * i*stride_h + j*stride_w;
+                        const float* sptr = m.row(i*stride_h) + j*stride_w;
 
                         float max = sptr[0];
 
@@ -170,7 +142,7 @@ int SPP::forward(const Mat& bottom_blob, Mat& top_blob) const
                 {
                     for (int j = 0; j < outw; j++)
                     {
-                        const float* sptr = m.data + m.w * i*stride_h + j*stride_w;
+                        const float* sptr = m.row(i*stride_h) + j*stride_w;
 
                         float sum = 0;
 

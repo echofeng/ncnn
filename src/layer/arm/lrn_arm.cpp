@@ -70,8 +70,6 @@ int LRN_arm::forward_inplace(Mat& bottom_top_blob) const
         }
     }
 
-    float alpha_div_size = alpha / local_size;
-
     if (region_type == NormRegion_ACROSS_CHANNELS)
     {
         Mat square_sum;
@@ -80,11 +78,13 @@ int LRN_arm::forward_inplace(Mat& bottom_top_blob) const
             return -100;
         square_sum.fill(0.f);
 
+        const float alpha_div_size = alpha / local_size;
+
         #pragma omp parallel for
         for (int q=0; q<channels; q++)
         {
             // square sum
-            for (int p=q - local_size / 2; p<q + local_size; p++)
+            for (int p=q - local_size / 2; p<=q + local_size / 2; p++)
             {
                 if (p < 0 || p >= channels)
                     continue;
@@ -130,7 +130,7 @@ int LRN_arm::forward_inplace(Mat& bottom_top_blob) const
 #endif // __ARM_NEON
 
 #if __ARM_NEON
-            float32x4_t _v1 = vdupq_n_f32(1.f);
+            float32x4_t _bias = vdupq_n_f32(bias);
             float32x4_t _ads = vdupq_n_f32(alpha_div_size);
             float32x4_t _mb = vdupq_n_f32(-beta);
             for (; nn>0; nn--)
@@ -138,7 +138,7 @@ int LRN_arm::forward_inplace(Mat& bottom_top_blob) const
                 float32x4_t _p = vld1q_f32(ptr);
                 float32x4_t _ssp = vld1q_f32(ssptr);
                 _ssp = vmulq_f32(_ssp, _ads);
-                _ssp = vaddq_f32(_ssp, _v1);
+                _ssp = vaddq_f32(_ssp, _bias);
                 _ssp = pow_ps(_ssp, _mb);
                 _p = vmulq_f32(_p, _ssp);
                 vst1q_f32(ptr, _p);
@@ -149,7 +149,7 @@ int LRN_arm::forward_inplace(Mat& bottom_top_blob) const
 #endif // __ARM_NEON
             for (; remain>0; remain--)
             {
-                *ptr = *ptr * pow(1.f + alpha_div_size * *ssptr, -beta);
+                *ptr = *ptr * pow(bias + alpha_div_size * *ssptr, -beta);
 
                 ssptr++;
                 ptr++;
@@ -175,6 +175,8 @@ int LRN_arm::forward_inplace(Mat& bottom_top_blob) const
 
         const int maxk = local_size * local_size;
 
+        const float alpha_div_size = alpha / maxk;
+
         // norm window offsets
         std::vector<int> _space_ofs(maxk);
         int* space_ofs = &_space_ofs[0];
@@ -198,12 +200,14 @@ int LRN_arm::forward_inplace(Mat& bottom_top_blob) const
         for (int q=0; q<channels; q++)
         {
             float* ptr = bottom_top_blob.channel(q);
-            const float* sptr = square_blob_bordered.channel(q);
+            const Mat m = square_blob_bordered.channel(q);
 
             for (int i = 0; i < outh; i++)
             {
                 for (int j = 0; j < outw; j++)
                 {
+                    const float* sptr = m.row(i) + j;
+
                     float ss = 0.f;
 
                     for (int k = 0; k < maxk; k++)
@@ -212,11 +216,10 @@ int LRN_arm::forward_inplace(Mat& bottom_top_blob) const
                         ss += val;
                     }
 
-                    ptr[j] = ptr[j] * pow(1.f + alpha_div_size * ss, -beta);
+                    ptr[j] = ptr[j] * pow(bias + alpha_div_size * ss, -beta);
                 }
 
                 ptr += outw;
-                sptr += w;
             }
         }
     }

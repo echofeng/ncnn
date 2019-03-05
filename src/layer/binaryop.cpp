@@ -27,32 +27,17 @@ BinaryOp::BinaryOp()
     support_inplace = false;
 }
 
-#if NCNN_STDIO
-#if NCNN_STRING
-int BinaryOp::load_param(FILE* paramfp)
+int BinaryOp::load_param(const ParamDict& pd)
 {
-    int nscan = fscanf(paramfp, "%d", &op_type);
-    if (nscan != 1)
+    op_type = pd.get(0, 0);
+    with_scalar = pd.get(1, 0);
+    b = pd.get(2, 0.f);
+
+    if (with_scalar != 0)
     {
-        fprintf(stderr, "BinaryOp load_param failed %d\n", nscan);
-        return -1;
+        one_blob_only = true;
+        support_inplace = true;
     }
-
-    return 0;
-}
-#endif // NCNN_STRING
-int BinaryOp::load_param_bin(FILE* paramfp)
-{
-    fread(&op_type, sizeof(int), 1, paramfp);
-
-    return 0;
-}
-#endif // NCNN_STDIO
-
-int BinaryOp::load_param(const unsigned char*& mem)
-{
-    op_type = *(int*)(mem);
-    mem += 4;
 
     return 0;
 }
@@ -102,7 +87,7 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
             for (int q=0; q<channels; q++)
             {
                 const float* ptr = a.channel(q);
-                const float* ptr1 = b.data + h * q;
+                const float* ptr1 = (const float*)b + h * q;
                 float* outptr = c.channel(q);
 
                 for (int y=0; y<h; y++)
@@ -125,7 +110,7 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
         {
             if (b.w == 1)
             {
-                const float b0 = b.data[0];
+                const float b0 = b[0];
                 #pragma omp parallel for
                 for (int q=0; q<channels; q++)
                 {
@@ -136,9 +121,6 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
                     {
                         outptr[i] = op(ptr[i], b0);
                     }
-
-                    ptr += w;
-                    outptr += w;
                 }
 
                 return 0;
@@ -148,16 +130,13 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
             for (int q=0; q<channels; q++)
             {
                 const float* ptr = a.channel(q);
-                const float b0 = b.data[q];
+                const float b0 = b[q];
                 float* outptr = c.channel(q);
 
                 for (int i=0; i<size; i++)
                 {
                     outptr[i] = op(ptr[i], b0);
                 }
-
-                ptr += w;
-                outptr += w;
             }
 
             return 0;
@@ -174,7 +153,7 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
             #pragma omp parallel for
             for (int q=0; q<channels1; q++)
             {
-                const float* ptr = a.data + h1 * q;
+                const float* ptr = (const float*)a + h1 * q;
                 const float* ptr1 = b.channel(q);
                 float* outptr = c.channel(q);
 
@@ -200,13 +179,9 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
 
         if (b.dims == 2)
         {
-            const float* ptr = a;
-            const float* ptr1 = b;
-            float* outptr = c;
-
             for (int i=0; i<size; i++)
             {
-                outptr[i] = op(ptr[i], ptr1[i]);
+                c[i] = op(a[i], b[i]);
             }
 
             return 0;
@@ -220,25 +195,21 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
 
             if (b.w == 1)
             {
-                const float* ptr = a;
-                const float b0 = b.data[0];
-                float* outptr = c;
-
+                const float b0 = b[0];
                 for (int i=0; i<size; i++)
                 {
-                    outptr[i] = op(ptr[i], b0);
+                    c[i] = op(a[i], b0);
                 }
 
                 return 0;
             }
 
             const float* ptr = a;
-            const float* ptr1 = b;
             float* outptr = c;
 
             for (int y=0; y<h; y++)
             {
-                const float b0 = ptr1[y];
+                const float b0 = b[y];
                 for (int x=0; x<w; x++)
                 {
                     outptr[x] = op(ptr[x], b0);
@@ -261,7 +232,7 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
                 if (c.empty())
                     return -100;
 
-                const float a0 = a.data[0];
+                const float a0 = a[0];
                 #pragma omp parallel for
                 for (int q=0; q<channels1; q++)
                 {
@@ -272,9 +243,6 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
                     {
                         outptr[i] = op(a0, ptr1[i]);
                     }
-
-                    ptr1 += w1;
-                    outptr += w1;
                 }
 
                 return 0;
@@ -286,13 +254,10 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
                 if (c.empty())
                     return -100;
 
-                const float a0 = a.data[0];
-                const float* ptr1 = b;
-                float* outptr = c;
-
+                const float a0 = a[0];
                 for (int i=0; i<size1; i++)
                 {
-                    outptr[i] = op(a0, ptr1[i]);
+                    c[i] = op(a0, b[i]);
                 }
 
                 return 0;
@@ -304,13 +269,10 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
                 if (c.empty())
                     return -100;
 
-                const float a0 = a.data[0];
-                const float* ptr1 = b;
-                float* outptr = c;
-
+                const float a0 = a[0];
                 for (int i=0; i<size1; i++)
                 {
-                    outptr[i] = op(a0, ptr1[i]);
+                    c[i] = op(a0, b[i]);
                 }
 
                 return 0;
@@ -326,7 +288,7 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
             #pragma omp parallel for
             for (int q=0; q<channels1; q++)
             {
-                const float a0 = a.data[q];
+                const float a0 = a[q];
                 const float* ptr1 = b.channel(q);
                 float* outptr = c.channel(q);
 
@@ -334,9 +296,6 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
                 {
                     outptr[i] = op(a0, ptr1[i]);
                 }
-
-                ptr1 += w1;
-                outptr += w1;
             }
 
             return 0;
@@ -348,13 +307,12 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
             if (c.empty())
                 return -100;
 
-            const float* ptr = a;
             const float* ptr1 = b;
             float* outptr = c;
 
             for (int y=0; y<h1; y++)
             {
-                const float a0 = ptr[y];
+                const float a0 = a[y];
                 for (int x=0; x<w1; x++)
                 {
                     outptr[x] = op(a0, ptr1[x]);
@@ -375,26 +333,43 @@ static int binary_op(const Mat& a, const Mat& b, Mat& c)
 
             if (b.w == 1)
             {
-                const float* ptr = a;
-                const float b0 = b.data[0];
-                float* outptr = c;
-
+                const float b0 = b[0];
                 for (int i=0; i<size; i++)
                 {
-                    outptr[i] = op(ptr[i], b0);
+                    c[i] = op(a[i], b0);
                 }
 
                 return 0;
             }
 
-            const float* ptr = a;
-            const float* ptr1 = b;
-            float* outptr = c;
-
             for (int i=0; i<size; i++)
             {
-                outptr[i] = op(ptr[i], ptr1[i]);
+                c[i] = op(a[i], b[i]);
             }
+        }
+    }
+
+    return 0;
+}
+
+template<typename Op>
+static int binary_op_scalar_inplace(Mat& a, float b)
+{
+    Op op;
+
+    int w = a.w;
+    int h = a.h;
+    int channels = a.c;
+    int size = w * h;
+
+    #pragma omp parallel for
+    for (int q=0; q<channels; q++)
+    {
+        float* ptr = a.channel(q);
+
+        for (int i=0; i<size; i++)
+        {
+            ptr[i] = op(ptr[i], b);
         }
     }
 
@@ -443,6 +418,32 @@ int BinaryOp::forward(const std::vector<Mat>& bottom_blobs, std::vector<Mat>& to
 
     if (op_type == Operation_POW)
         return binary_op< binary_op_pow<float> >(bottom_blob, bottom_blob1, top_blob);
+
+    return 0;
+}
+
+int BinaryOp::forward_inplace(Mat& bottom_top_blob) const
+{
+    if (op_type == Operation_ADD)
+        return binary_op_scalar_inplace< std::plus<float> >(bottom_top_blob, b);
+
+    if (op_type == Operation_SUB)
+        return binary_op_scalar_inplace< std::minus<float> >(bottom_top_blob, b);
+
+    if (op_type == Operation_MUL)
+        return binary_op_scalar_inplace< std::multiplies<float> >(bottom_top_blob, b);
+
+    if (op_type == Operation_DIV)
+        return binary_op_scalar_inplace< std::divides<float> >(bottom_top_blob, b);
+
+    if (op_type == Operation_MAX)
+        return binary_op_scalar_inplace< binary_op_max<float> >(bottom_top_blob, b);
+
+    if (op_type == Operation_MIN)
+        return binary_op_scalar_inplace< binary_op_min<float> >(bottom_top_blob, b);
+
+    if (op_type == Operation_POW)
+        return binary_op_scalar_inplace< binary_op_pow<float> >(bottom_top_blob, b);
 
     return 0;
 }
